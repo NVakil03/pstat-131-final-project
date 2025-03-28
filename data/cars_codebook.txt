@@ -1,0 +1,9 @@
+make: the make of the car or the company that made the car
+model: the model of the car or the car's specific name
+year: the year in which the car was manufactured
+miles: the mileage on the car or the number of miles the car has traveled
+ext_color: the exterior color of the car
+int_color: the interior color of the car
+num_accid: the number of car accidents the car has been through
+num_owners: the number of owners who have owned the car
+price: the price of the used car
