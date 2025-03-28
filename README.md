@@ -1,2 +1,2 @@
-# pstat-131-final-project
-Predicting Used Car Prices
+# Predicting Used Car Prices
+
