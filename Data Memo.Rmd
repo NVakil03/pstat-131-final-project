@@ -1,0 +1,41 @@
+---
+title: "Data Memo"
+author: "Nabeel Vakil"
+date: "2024-01-17"
+output:
+    html_document:
+      toc: true
+      toc_float: true
+      code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### An Overview of My Dataset
+
+```{r}
+# Loading in tidyverse
+library(tidyverse)
+
+# Loading and assigning the data to the variable cars
+cars <- read_csv("car_web_scraped_dataset.csv")
+
+# Utilizing head() to view the first six rows
+head(cars)
+```
+
+My data set was obtained from the Kaggle data set, "Used Car Price Prediction", which can be viewed here. It contains scraped data by user Abdul Rasheed of the prices of certain used cars from the used car marketplace Truecars.com. The data set has 2840 observations and 6 variables to start, but I would like to split up three of these variables into two parts to make it so that I have 9 columns. The variables I would like to split are the car name into its make and model, the car color into its exterior color and interior color, and the car condition into its number of accidents reported and number of owners. Thus, I would like to have 8 predictors, with the response variable being the price of the used car. To further clean the data, I would also like to get rid of the unknown values specified for either the exterior color or interior color of the car. In terms of the variable types, I will be working with a combination of character and numeric variables.
+
+### An Overview of My Research Question(s)
+
+I'm interested in predicting the price of a used car, based on its year, miles, exterior color, interior color, number of accidents reported, and number of owners. This can best be done through the utilization of a regression approach. I personally believe that the year, miles, and number of accidents reported will be the most influential in affecting the price of the car. The goal of my model is predictive, as I intend to predict the price of a used car from its features stated above with minimum reducible error.
+
+### My Proposed Project Timeline
+
+My dataset has already been loaded, but I plan to tidy it up by splitting some of the variables into multiple and taking away the unknown values within Weeks 2-3. I then plan on conducting my exploratory data analysis within Weeks 3-5. From there, I'd like to implement the fitting of my models and comparison of them by Weeks 5-7. Lastly, I plan on interpreting my model results, making any necessary changes and refittings of my models, and enhancing my report between Weeks 7-10. Throughout all the weeks, I also plan on writing my report as I go. However, this is all just a rough timeline, and some details in my plan may change as the weeks go by.
+
+### My Questions/Concerns
+
+Overall, I'm excited by the opportunity to use this data set throughout this machine learning class, but I would just like to confirm that there is nothing wrong with it. I'm also wondering if I have an effective approach and timeline, as this is my first time dealing with machine learning. Nonetheless, I'm committed to putting in my best work and am looking forward to seeing the rewarding results; I would just like confirmation that everything looks okay so far.

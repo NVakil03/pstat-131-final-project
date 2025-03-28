@@ -1,0 +1,846 @@
+---
+title: "Predicting Used Car Prices - Final Project"
+author: "Nabeel Vakil - PSTAT 131/231"
+output:
+    html_document:
+      toc: true
+      toc_float: true
+      code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE,
+                      warning = FALSE)
+options(scipen = 999)
+```
+
+# Introduction
+
+The purpose of this project is to construct a machine learning model that can predict the price of a used car, based on its make, model, year, miles, exterior color, interior color, number of accidents reported, and number of owners. Throughout the project, we will be utilizing multiple machine learning techniques to obtain the most accurate model for this regression problem.
+
+<center>
+
+![](images/used_cars.jpeg)
+
+</center>
+
+## Inspiration and Motive
+
+In the last couple of years, some of my family members have attained driver's licenses, including me. Although it has given us more opportunities and enhanced our well-beings, a big problem has been getting our own cars afterwards. I experienced a little less trouble with this issue since my dad was willing to pass down his car to me and get a new one for himself, but my younger sister and some of my cousins had to wait some time for their parents to buy them used cars, mainly because they were waiting to find them for the right price. As I'm sure many others face a similar issue of having to wait to find the right price for a used car, I wanted to see what variables exactly play a role in determining used car prices and further use my findings to produce a machine learning model that can accurately predict the price of a used car. Furthermore, if successful, we could even use our model to see what a good price for a used car is, if it predicts a higher price than its actual price, and what a bad price for a used car is, if it predicts a lower price than its actual price.
+
+<center>
+
+![](images/used_cars.gif){width="500"}
+
+</center>
+
+## Project Outline
+
+Now that we know the inspiration behind and goals for the project, let's construct a plan for how we will build our model. First things first, we will have to undertake data manipulation and tidying, particularly in regards to adding more predictor variables, converting variables to be either factor or numeric, and dealing with missing values. We will then carry out some visual Exploratory Data Analysis (EDA) to get a better understanding of our data and the relationships among its variables. Once our EDA is complete, we will split our data into training and testing data sets, design a recipe, and create 10 folds with k-fold cross-validation on the training set to predict the testing error. The models we will be using to fit on the training data are Linear Regression, Elastic Net Regression, Polynomial Regression, Random Forest, Boosted Tree, and K-Nearest Neighbors (KNN). Out of all these models, we will use the one that performs the strongest on the training data to fit to the testing data and discover how effective our model can actually be at predicting used car prices. Now it's time to go into "Drive" and begin the process!
+
+## Data Description
+
+My data set was obtained from the Kaggle data set, "Used Car Price Prediction", which can be viewed [here](https://www.kaggle.com/datasets/ayaz11/used-car-price-prediction/data). It contains scraped data by user Abdul Rasheed of the prices of certain used cars from the used car marketplace Truecars.com. 
+
+The data set has 2840 observations and 6 variables to start, but we will be splitting split up three of these variables into two parts to make it so that we have 9 columns. The variables we will be splitting are the car name into its make and model, the car color into its exterior color and interior color, and the car condition into its number of accidents reported and number of owners. Thus, we will be having 8 predictors, with the response variable being the price of the used car. In terms of the variable types, we will be working with a combination of categorical and numeric variables.
+
+# Exploratory Data Analysis (EDA)
+
+As a prerequisite to modeling, we have to make any necessary adjustments to our data, including creating or manipulating variables, converting variables to factor or numeric types, and handling missing values. It is also advantageous to analyze some or all of the variables that are relevant to the model and their relationships with the each other through the use of visuals or other functions. This is what we will be doing in this section.
+
+## Loading Packages and the Raw Data
+
+Before we can do anything with our data, we have to first load it in and assign it to a variable, which we will call `cars`. We will also load all the packages needed for the project and set a seed, which makes our results easily reproducible.
+
+```{r}
+# setting a seed at the beginning of the document so that my results are easily reproducable
+set.seed(1208)
+
+# loading in the necessary packages
+library(tidyverse)
+library(tidymodels)
+library(ggplot2)
+library(discrim)
+library(corrr)
+library(corrplot)
+library(ggthemes)
+library(kableExtra)
+library(kknn)
+library(yardstick)
+library(naniar)
+library(themis)
+library(ranger)
+library(vip)
+library(janitor)
+tidymodels_prefer()
+
+# loading and assigning the data to the variable cars
+cars <- read_csv("data/car_web_scraped_dataset.csv")
+```
+
+Let's also confirm that this raw data contains 2840 observations and 6 variables, and see the first six rows of it:
+
+```{r}
+# getting the dimension of the data set in terms of rows and then columns
+dim(cars)
+
+# utilizing head() to view the first six rows of cars
+head(cars)
+```
+
+Yes, the raw data is looking how we expected.
+
+## Examining and Dealing With Missing Values
+
+We should also address the potential problem of having any missing data before moving on to variable manipulation/exploration. Let's first check if we have any missing data:
+
+```{r}
+# looking at missingness in the data by checking for any missing cells
+vis_miss(cars)
+```
+
+This plot shows us at a glance that 100% of the data is present, i.e., every cell in the data set has a data input. However, we should also take a better look at the data itself to verify that there are actually no missing values in the data, as they could have a data input specifying that they are missing.
+
+```{r}
+cars %>%
+  kable() %>% 
+  kable_styling(full_width = F) %>% 
+  scroll_box(width = "100%", height = "200px")
+```
+
+Most of the data set looks good and properly filled, although the `color` variable has some unknown value inputs for the car's exterior color and/or interior color. However, these inputs show up fairly infrequently, so we can afford to leave them for now and lump them together with other infrequent car exterior colors and interior colors in our data/variable manipulation phase, which is what we'll do.
+
+## Tidying and Exploring the Raw Data
+
+We've now come to the time of data/variable manipulation, in which we will split the three variables we wanted to add more predictor variables into our model, convert certain variables to either factor or numeric, and lump together uncommon levels of the car exterior and interior colors.
+
+### Our Desired Variable Splitting and Variable Factor/Numeric Conversions
+
+First, we shall use some string separation tools to split the car name column into its make and model, as well as make these new variables factor variables:
+
+```{r}
+# splitting the name variable into make and model
+cars <- cars %>%
+  separate_wider_delim(cols = name, delim = " ", names = c("make", "model"), too_many = "merge")
+
+# making make and model factor variables
+cars <- cars %>%
+  mutate(make = factor(make),
+         model = factor(model))
+```
+
+Next comes splitting the car color column into its exterior color and interior color, as well as make these new variables factor variables:
+
+```{r}
+# splitting the color variable into ext_color (exterior color) and int_color (interior color), and removing the unnecessary words/characters in ext_color and int_color
+cars <- cars %>%
+  separate_wider_delim(cols = color, delim = ", ", names = c("ext_color", "int_color")) %>%
+  mutate(ext_color = str_remove(ext_color, "(\\s\\w+)")) %>%
+  mutate(int_color = str_remove(int_color, "(\\s\\w+)"))
+
+# making ext_color and int_color factor variables
+cars <- cars %>%
+  mutate(ext_color = factor(ext_color),
+         int_color = factor(int_color))
+```
+
+Last but not least in terms of variable splitting, we will split the car condition column into its number of accidents reported and number of owners, as well as make these new variables factor variables:
+
+```{r}
+# splitting the condition variable into num_accid (number of accidents reported) and num_owner (number of owners), and removing the unnecessary words/characters in num_accid and num_owner
+cars <- cars %>%
+  separate_wider_delim(cols = condition, delim = ", ", names = c("num_accid", "num_owner")) %>%
+  mutate(num_accid = str_remove(num_accid, "(\\s\\w+\\s\\w+)")) %>%
+  mutate(num_accid = ifelse(num_accid == "No", 0, num_accid)) %>%
+  mutate(num_owner = str_remove(num_owner, "(\\s\\w+)"))
+
+# making num_accid and num_owner factor variables
+cars <- cars %>%
+  mutate(num_accid = factor(num_accid),
+         num_owner = factor(num_owner))
+```
+
+
+All we have left to do in this subsection of variable splitting and converting certain variables to either factor or numeric is to fix up the miles and price columns and convert them into numeric variables:
+
+```{r}
+# removing the unnecessary words/characters in miles and price
+cars <- cars %>% 
+  mutate(miles = str_remove(miles, "(\\s\\w+)"),
+         miles = str_remove(miles, ",")) %>%
+  mutate(price = str_remove(price, "."),
+         price = str_remove(price, ","))
+
+# making miles and price numeric variables
+cars <- cars %>%
+  mutate(miles = as.numeric(miles),
+         price = as.numeric(price))
+```
+
+### Some Factor Lumping
+
+Another action I would like to take before moving on to visualizing our variables and their relationships with one another is lump together low frequency levels in our exterior color and interior color variables, since car color in general has a pretty few common types; the rest could justifiably be put into an "Other" category because of their low frequency. For both factor lumps, we will use a proportion of 0.15, meaning that car colors that show up less than 15% of the time in the data set will be lumped into this "Other" category.
+
+```{r}
+# lumping together factor levels of low frequency in ext_color and int_color into an "Other" category for both variables
+cars <- cars %>%
+  mutate(int_color = fct_lump(int_color, prop = 0.15), 
+         ext_color = fct_lump(ext_color, prop = 0.15)) 
+
+# viewing the levels of int_color
+cars$int_color %>% 
+  levels() # typically cars have black or gray interiors
+
+# viewing the levels of ext_color
+cars$ext_color %>% 
+  levels() # typically cars have either black, gray, or white exteriors
+```
+
+## Visual EDA
+
+Now that our data is all tidied up, it's the perfect time to conduct some visual EDA to get a better understanding of the relationships between our predictors and the outcome as well as with with each other.
+
+### The Distribution of Used Car Prices, Our Outcome Variable
+
+First and foremost, let's take a look at a histogram showing the distribution of of our outcome variable, `price`.
+
+```{r}
+# creating a histogram of price
+cars %>% 
+  ggplot(aes(x = price)) + 
+  geom_histogram(fill = "darkblue") +
+  labs(x = "Used Car Prices", y = "Frequency", 
+       title = "Histogram of Used Car Prices") +
+  theme_bw()
+
+# getting the minimum, maximum, and mean of the data
+min(cars$price)
+max(cars$price)
+mean(cars$price)
+```
+
+Here, we can see that used car prices range from \$4395 all the way up to \$252,900! In addition to this high range, the distribution of `price` is unimodal with a mean of $25745.43, but contains some positive/right skew, indicating that our models will likely have to go beyond linearity to perform well at predicting the price of a used car.
+
+### Variable Correlation Plot
+
+Now that we have an idea of the distribution of used car prices, we can create a correlation plot to explore the the overall relationships across all continuous variables. This way, we can see how our numeric predictor variables are correlated with price and with each other. Although we only have two numeric predictor variables (`year` and `miles`), this plot will still be very useful, as the year of a car and the amount of miles it has are said to be two of the most important factors in determining the price of a used car, and I'm sure they will be correlated with each other as well to some extent.
+
+```{r}
+# creating a correlation matrix of the numeric variables to better discover their relationships with each other:
+
+# selecting the numeric variables
+cars_numeric <- cars %>%
+  select_if(is.numeric)
+
+# calculating the correlations between the variables
+cars_cor <- cars_numeric %>%
+  cor
+
+# making the correlation plot
+cars_corrplot <- cars_cor %>%
+  corrplot(method = "circle", addCoef.col = 1)
+```
+
+As predicted, `year` and `miles` do appear to be moderately correlated with `price`. In general, we can somewhat assume that as the number of miles of a car increases, its price decreases, and that newer cars are worth more than older cars. Even more notable is the stronger correlation between `year` and `miles`, indicating that newer cars generally have less miles and vice versa, which makes sense.
+
+### Scatterplot of Miles and Price with Number of Owners
+
+Let's further investigate this relationship between `miles` and `price`, but while also adding another layer of `num_owner`. 
+
+```{r}
+# creating a scatterplot of miles vs price with number of owners
+cars %>% 
+  ggplot(aes(x = miles, y = price, color = num_owner)) + 
+  geom_jitter(width = 0.5, size = 1) +
+  geom_smooth(method = "lm", se = F, col = "darkred") +
+  labs(x = "Miles", y = "Price", 
+       title = "Scatterplot of Miles vs Price with Number of Owners") +
+  theme_bw()
+```
+
+The relationship here does not appear to be too strong but a lot of data points still somewhat follow the trend. Thus, we can conclude that having a higher number of miles driven on a car slightly relates to it having a lower price and vice versa. This makes contextual sense, as having more miles on a car means that it'll likely not last as long and have more maintenance issues, hence dropping its value and price. When considering the number of owners too, it is apparent that cars with less miles appear to have had less owners in general, while cars with more miles appear to have had more owners in general.
+
+### Scatterplot of Year and Price with Number of Owners
+
+Now let's further investigate the relationship between `year` and `price`, while also adding another layer of `num_owner` again.
+
+```{r}
+# creating a scatterplot of year vs price with number of owners
+cars %>% 
+  ggplot(aes(x = year, y = price, color = num_owner)) + 
+  geom_jitter(width = 0.5, size = 1) +
+  geom_smooth(method = "lm", se = F, col = "darkred") +
+  labs(x = "Year", y = "Price", 
+       title = "Scatterplot of Year vs Price with Number of Owners") +
+  theme_bw()
+```
+
+The relationship here also does not appear to be too strong but a lot of data points still somewhat follow the trend. Thus, we can conclude that having a car made in a more recent year slightly relates to it having a higher price and vice versa. This makes contextual sense, as having a newer car means that it'll likely last longer and have less maintenance issues, hence increasing its value and price. When considering the number of owners too, it is apparent that older cars appear to have had more owners in general, while newer cars appear to have had less owners in general.
+
+### Boxplot of Price Grouped by Number of Acccidents
+
+Now let's incorporate more categorical predictors into the mix and see how the number of accidents a car has gone through, another variable expected to influence the price a lot, actually does affect its price.
+
+```{r}
+# creating a boxplot of price grouped by number of accidents
+cars %>%
+  ggplot(aes(x = price, y = num_accid)) +
+  geom_boxplot(fill = "orange") + 
+  geom_jitter(alpha = 0.1) +
+  labs(x = "Price", y = "Number of Accidents", 
+       title = "Boxplot of Price Grouped by Number of Accidents") +
+  theme_bw()
+```
+
+It seems like the number of accidents does significantly play a role in determining the price of a used car, as the medians, minimums, maximums, and quartiles all generally increase as the number of accidents decreases. This makes contextual sense, as having a car with less accidents endured means that it likely is more durable, looks better, and will last longer and have less maintenance issues and underlying problems, hence increasing its value and price.
+
+### Boxplot of Price Grouped by Car Color
+
+Now that we got the ball rolling for including categorical predictors, let's explore the relationship among the overall color of a car, including its exterior color and interior color, with its price.
+
+```{r}
+# creating a boxplot of price grouped by car color
+cars %>%
+  ggplot(aes(x = price, y = ext_color, fill = int_color)) +
+  geom_boxplot() + 
+  geom_jitter(alpha = 0.1) +
+  labs(x = "Price", y = "Exterior Color", fill = "Interior Color", 
+       title = "Boxplot of Price Grouped by Car Color") +
+  theme_bw()
+```
+
+This boxplot is very interesting, somewhat indicating that the overall color of a car does not affect its price by too much. Across all car colors, their distributions relative to price appear fairly the same, although there are some slight variations across them. One captivating observation I've made is the variation of price among cars with gray exteriors, as the ones with other-colored interiors appear to be worth the most in general, and the ones with gray interiors as well appear to be worth the least in general. Despite not looking to be too big of a factor, it still seems important to keep these variables in the model with the slight changes in their distributions relative to price.
+
+### Bar Charts of Car Makes and Car Models
+
+Thus far, we have explored every variable in our used cars data set except for `make` and `model`. Let's examine the bar charts for each of these variables to see how many types there are and how many observations are in each type:
+
+```{r}
+# creating a bar chart of make
+cars %>% 
+  ggplot(aes(y = make)) +
+  geom_bar(fill = "darkblue") +
+  labs(x = "Frequency", y = "Type of Car Make",
+    title = "Frequency of Each Type of Car Make") +
+  theme_bw()
+
+# creating the same bar chart but for model
+cars %>% 
+  ggplot(aes(y = model)) +
+  geom_bar(fill = "darkblue") +
+  labs(x = "Frequency", y = "Type of Car Model",
+    title = "Frequency of Each Type of Car Model") +
+  theme_bw()
+```
+
+From these plots, we can see that there are 42 types of car makes and an absurd amount of types of car models (309 to be exact) in the data set! That would be too many levels to include in our model; instead, it is best to drop the levels with near-zero variance, since some levels have a lot more variance than others. This will allow our model to prioritize the types of makes and models with the most variance; we want to do this so that our model is computationally feasible. One of the reasons we are choosing to do this in the recipe rather than in the data tidying is because want to preserve these levels in the cleaned data set itself; it allows for more options with the data set if one would like to change what we did, for example, since car makes and models are expected to be important predictors of price.
+
+# Setting up for the Models
+
+Through the above EDA, we now have a better gauge of the relationships between our predictor variables and the outcome and each other. This brings us to the next phase of setting up for the models, which consists of splitting the data into training and testing, creating our recipe, and establishing cross validation by creating folds on the training data.
+
+## Splitting the Data into Training and Testing
+
+The first step in setting up our models is to split the entire data set into training and testing data sets. The training set will be used for training and fitting the models, while the testing set will be used for strictly testing the models, not training. The goal is to first fit the models to the training data and decide which one performed the best, typically by choosing the one that produced the lowest root mean square error (RMSE), and then see how it performs on new data by using it on the testing data. Splitting the data into training and testing prevents overfitting of the models to the data, since not all of the data is used to train the model. The train/test split I have chosen is 70/30, meaning that roughly 70% of the data will go to the training set and roughly 30% of the data will go to the testing set. This is generally a good split since a good amount (about 70% of the entire data set) of the data will be used to train the models while still allocating a sufficient portion (about 30% of the entire data set) of the data for testing the trained models. Furthermore, we have stratified the split on the outcome variable `price` to maintain an equal distribution of it across both training and testing sets.
+
+```{r}
+# performing an initial split of the data, stratifying by the outcome variable price
+cars_split <- initial_split(cars, prop = 0.70,
+                               strata = price)
+cars_train <- training(cars_split)
+cars_test <- testing(cars_split)
+```
+
+Let's also verify that the data was split correctly, before moving on to creating our recipe:
+
+```{r}
+# verifying that the training and testing data sets have the appropriate number of observations
+dim(cars_train)
+1985/2840 # this is about 70% of the total cars data
+dim(cars_test)
+855/2840 # this is about 30% of the total cars data
+```
+
+The code above verifies that the training set contains about 70% of the total cars data while the testing set contains about 30% of the total cars data. We're good to go!
+
+## Creating Our Recipe:
+
+Throughout each model fitting and our overall analysis, we will virtually be using the same predictors, conditions, and outcome. Thus, we only need to create and utilize one recipe, a universal/general recipe with slight adjustments to it if needed, for all of our models. Each model will take this recipe and work with it within the techniques associated with the model.
+
+Since we will be using all of our 8 predictors (`make`, `model`, `year`, `miles`, `ext_color`, `int_color`, `num_accid`, and `num_owner`) to predict the used car prices, they will all be put in the recipe. We also dummy-code all our nominal predictors to viably include the categorical variables in our models. Then, all levels with zero variance are dropped before normalizing all predictors so that the models can properly work. Moreover, we normalize our variables by centering and scaling them. Finally, we drop all the levels with near-zero variance for all predictors, particularly as a way to deal with all the levels for the car makes and car models in the data.
+
+```{r}
+# creating a recipe predicting the outcome variable price using the training data
+cars_recipe <- recipe(price ~ ., data = cars_train) %>% # the . indicates the inclusion of all the other variables in the data set besides price
+  step_dummy(all_nominal_predictors()) %>% # dummy-coding all nominal predictors
+  step_zv(all_predictors()) %>% # dropping all levels with zero variance before normalizing all predictors
+  step_center(all_predictors()) %>% # centering all predictors
+  step_scale(all_predictors()) %>% # scaling all predictors
+  step_nzv(all_predictors()) # dropping all levels with near-zero variance
+
+# seeing what the results of the recipe itself actually look like
+cars_recipe %>%
+  prep() %>% 
+  bake(new_data = cars_train) %>%
+  head() %>%
+  kable() %>% 
+  kable_styling(full_width = F) %>% 
+  scroll_box(width = "100%", height = "200px")
+```
+
+## K-Fold Cross Validation
+
+For this k-fold cross validation (10-fold in our case), we will create 10 folds on the training set. This means that the training data is randomly split into 10 different folds or subsets of approximately equal sizes, with every single observation eventually getting used to fit the model and estimate testing error. The reason why we do this is because it yields a good measure of how well our machine learning model can predict the data before applying it to the testing data.
+
+For some further explanation, k-fold cross validation is conducted by dividing the data into k folds. Each fold then ends up being a testing set (called a validation set), with the other k-1 folds being the training set for that fold. With these new folds, whatever model we are fitting is fit to each training set and tested on the corresponding testing set (each time, a different fold should be used as a validation set). The error metric is also taken from the validation set of each of the folds and averaged across all folds to measure performance. It ends up producing a good estimate of testing error since it is better to take the mean error from multiple samples instead of just one error from one sample.
+
+We stratify on the outcome variable `price` to ensure that the data in each fold is not imbalanced in terms of this outcome, i.e., stratifying here also maintains an equal distribution of `price` across folds.
+
+```{r}
+# using k-fold cross-validation to create 10 folds on the training set, stratifying by price as well
+cars_folds <- vfold_cv(cars_train, v = 10, strata = price)
+```
+
+# Building Prediction Models
+
+Now that we have set up our models, it is time to get them all built! For our error metric for our models, we will be using root mean square error (RMSE) to measure performance, since it works well as a metric for all of our models (RMSE is commonly used for regression problems). RMSE relies on Euclidean distance measures to show how far off the model's prediction values are from the true values. A lower RMSE would mean that the model performed better since this would mean that the predicted values are less of a distance away from the actual values. Since we will be dealing with distances, it is important that our variables are normalized, which was already covered in the recipe. We will be fitting 6 models to the data in total: Linear Regression, Elastic Net Regression, Polynomial Regression, Random Forest, Boosted Tree, and K-Nearest Neighbors (KNN). Additionally, we will be saving the results of the models and loading them back in so that we only have to run them one time; the models take a very long time to run.
+
+## Fitting the Models
+
+Fitting each of the models follows a similar multi-step process. I will explain each step in order below and include all of my code for each model under each step for reference:
+
+    1. Directly set up the model by specifying the desired model to be fit, its parameter values to be tuned, the mode of the model (regression or classification, but we will be using regression for all cases since we are dealing with a regression problem), and the engine where the model is derived from.
+
+```{r}
+# Linear Regression:
+lm_model <- linear_reg() %>%
+  set_mode("regression") %>%
+  set_engine("lm")
+
+# Elastic Net Regression:
+# Tuning the penalty and mixture
+en_spec <- linear_reg(penalty = tune(),
+                      mixture = tune()) %>% 
+  set_mode("regression") %>% 
+  set_engine("glmnet")
+
+# Polynomial Regression:
+# Adjusting the recipe because the tuning parameter must be added in the recipe for polynomial regression along with the variables to add a tuned degree too
+# Tuning the degree
+
+poly_recipe <- cars_recipe %>%
+  step_poly(year, miles, degree = tune())
+
+poly_spec <- linear_reg() %>% 
+  set_mode("regression") %>% 
+  set_engine("lm")
+
+# Random Forest:
+# Tuning the mtry (the number of predictors randomly sampled at each split), trees, and min_n (the number of minimum values in each node)
+rf_spec <- rand_forest(mtry = tune(), 
+                       trees = tune(), 
+                       min_n = tune()) %>%
+  set_mode("regression") %>%
+  set_engine("ranger", importance = "impurity")
+
+# Boosted Tree:
+# Tuning the trees, learn_rate (the learning rate), and min_n
+bt_spec <- boost_tree(trees = tune(), 
+                      learn_rate = tune(),
+                      min_n = tune()) %>%
+  set_mode("regression") %>% 
+  set_engine("xgboost")
+
+# KNN:
+# Tuning the number of neighbors
+knn_model <- nearest_neighbor(neighbors = tune()) %>% 
+  set_mode("regression") %>% 
+  set_engine("kknn")
+```
+
+    2. Set up the workflow for the model, adding the model itself and the recipe to be used.
+
+```{r}
+# Linear Regression:
+lm_wkflow <- workflow() %>% 
+  add_model(lm_model) %>% 
+  add_recipe(cars_recipe)
+
+# Elastic Net Regression:
+en_wkflow <- workflow() %>% 
+  add_model(en_spec) %>%
+  add_recipe(cars_recipe)
+
+# Polynomial Regression:
+poly_wkflow <- workflow() %>% 
+  add_model(poly_spec) %>% 
+  add_recipe(poly_recipe)
+
+# Random Forest:
+rf_wkflow <- workflow() %>% 
+  add_model(rf_spec) %>% 
+  add_recipe(cars_recipe)
+
+# Boosted Tree:
+bt_wkflow <- workflow() %>% 
+  add_model(bt_spec) %>% 
+  add_recipe(cars_recipe)
+
+# KNN:
+knn_wkflow <- workflow() %>% 
+  add_model(knn_model) %>% 
+  add_recipe(cars_recipe)
+```
+
+    3. Design a tuning grid that specifies the ranges of the parameters to be tuned in addition to how many levels of each.
+
+```{r}
+# Linear Regression:
+# No tuning grid because there are no tuning parameters
+
+# Elastic Net Regression:
+en_grid <- grid_regular(penalty(range = c(-5, 5)),
+                        mixture(range = c(0, 1)),
+                        levels = 10)
+
+# Polynomial Regression:
+poly_grid <- grid_regular(degree(range = c(1, 10)), 
+                          levels = 10)
+
+# Random Forest:
+rf_grid <- grid_regular(mtry(range = c(1, 8)), 
+                        trees(range = c(200, 1000)),
+                        min_n(range = c(5, 20)),
+                        levels = 8)
+
+# Boosted Tree:
+bt_grid <- grid_regular(trees(range = c(5, 200)), 
+                        learn_rate(range = c(0.01, 0.1),
+                                   trans = identity_trans()),
+                        min_n(range = c(40, 60)),
+                        levels = 5)
+
+# KNN: 
+knn_grid <- grid_regular(neighbors(range = c(1, 15)), 
+                         levels = 15)
+```
+
+    4. Fit/tune the model, specifying the workflow, k-fold cross validation folds, and the tuning grid for our chosen parameters to tune (the code for this step was not ran more than once so that way the models did not have to be rerun).
+
+```{r, eval = FALSE}
+# Linear Regression:
+# No tuning is required since there are no tuning parameters, but we still have to fit the model to the folds
+lm_fit <- fit_resamples(
+  object = lm_wkflow,
+  resamples = cars_folds
+)
+
+# Elastic Net Regression:
+en_tune_res <- tune_grid(
+  object = en_wkflow, 
+  resamples = cars_folds,
+  grid = en_grid
+)
+
+# Polynomial Regression:
+poly_tune_res <- tune_grid(
+  object = poly_wkflow, 
+  resamples = cars_folds, 
+  grid = poly_grid
+  )
+
+# Random Forest:
+rf_tune_res <- tune_grid(
+  object = rf_wkflow, 
+  resamples = cars_folds, 
+  grid = rf_grid
+)
+
+# Boosted Tree:
+bt_tune_res <- tune_grid(
+  object = bt_wkflow, 
+  resamples = cars_folds, 
+  grid = bt_grid
+)
+
+# KNN:
+knn_tune_res <- tune_grid(
+  object = knn_wkflow, 
+  resamples = cars_folds, 
+  grid = knn_grid
+)
+```
+
+    5. Save the fit/tuned model to an RDS file to prevent having to rerun the model (the code for this step was not ran more than once so that way the models did not have to be rerun).
+
+```{r, eval = FALSE}
+# Linear Regression:
+write_rds(lm_fit, file = "data/tuned_models/lm.rds")
+
+# Elastic Net Regression:
+write_rds(en_tune_res, file = "data/tuned_models/en.rds")
+
+# Polynomial Regression:
+write_rds(poly_tune_res, file = "data/tuned_models/poly.rds")
+
+# Random Forest:
+write_rds(rf_tune_res, file = "data/tuned_models/rf.rds")
+
+# Boosted Tree:
+write_rds(bt_tune_res, file = "data/tuned_models/bt.rds")
+
+# KNN:
+write_rds(knn_tune_res, file = "data/tuned_models/knn.rds")
+```
+
+    6. Load back in the saved RDS file to prevent having to rerun the model.
+
+```{r}
+# Linear Regression:
+lm_fit <- read_rds(file = "data/tuned_models/lm.rds")
+
+# Elastic Net Regression:
+en_tuned <- read_rds(file = "data/tuned_models/en.rds")
+
+# Polynomial Regression:
+poly_tuned <- read_rds(file = "data/tuned_models/poly.rds")
+
+# Random Forest:
+rf_tuned <- read_rds(file = "data/tuned_models/rf.rds")
+
+# Boosted Tree:
+bt_tuned <- read_rds(file = "data/tuned_models/bt.rds")
+
+# KNN:
+knn_tuned <- read_rds(file = "data/tuned_models/knn.rds")
+```
+
+    7. Collect the metrics of the fit/tuned model. Filter them to get just the RMSE values, arrange the RMSE values in ascending order of mean to see what the lowest RMSE for the tuned model is, and slice the first value to choose only the lowest RMSE value. Save and assign this lowest RMSE value to a variable for comparison with the other models.
+
+```{r}
+# Linear Regression:
+best_lm_model <- collect_metrics(lm_fit) %>%
+  filter(.metric == "rmse") %>%
+  arrange(mean) %>%
+  slice(1)
+
+# Elastic Net Regression:
+best_en_model <- collect_metrics(en_tuned) %>%
+  filter(.metric == "rmse") %>%
+  arrange(mean) %>%
+  slice(1)
+
+# Polynomial Regression:
+best_poly_model <- collect_metrics(poly_tuned) %>%
+  filter(.metric == "rmse") %>%
+  arrange(mean) %>%
+  slice(1)
+
+# Random Forest:
+best_rf_model <- collect_metrics(rf_tuned) %>%
+  filter(.metric == "rmse") %>%
+  arrange(mean) %>%
+  slice(1)
+
+# Boosted Tree:
+best_bt_model <- collect_metrics(bt_tuned) %>%
+  filter(.metric == "rmse") %>%
+  arrange(mean) %>%
+  slice(1)
+
+# KNN:
+best_knn_model <- collect_metrics(knn_tuned) %>%
+  filter(.metric == "rmse") %>%
+  arrange(mean) %>%
+  slice(1)
+```
+
+# Model Results
+
+Now it's time to compare the lowest RMSE results of all of our models and see which one performed the best with the absolute lowest RMSE!
+
+```{r}
+# creating a tibble of all of our models and their lowest RMSE values:
+
+model_names <- c("Linear Regression", "Elastic Net Regression", 
+                 "Polynomial Regression", "Random Forest",
+                 "Boosted Tree", "K-Nearest Neighbors")
+
+best_model_means <- c(best_lm_model$mean, best_en_model$mean,
+                      best_poly_model$mean, best_rf_model$mean,
+                      best_bt_model$mean, best_knn_model$mean)
+
+best_model_compare_tibble <- tibble(Model = model_names,
+                                    RMSE = best_model_means)
+
+# arranging the tibble by the lowest RMSE values
+best_model_compare_tibble <- best_model_compare_tibble %>%
+  arrange(RMSE)
+best_model_compare_tibble
+```
+
+Here is a visualization of these results in a bar chart:
+
+```{r}
+# creating a bar chart of all of our models and their lowest RMSE values
+best_model_compare_tibble %>%
+  ggplot(aes(x = Model, y = RMSE)) +
+  geom_bar(stat = "identity", aes(fill = Model)) +
+  scale_fill_manual(values = c("blue1", "red1", "blue2", "red2", "blue3", "red3")) +
+  theme(legend.position = "none") +
+  labs(title = "Comparing RMSE by Model")
+```
+
+From the above tibble and bar chart, it is apparent that the Random Forest model performed the best in terms of the performance of the models on the cross-validation folds, with the Boosted Tree and Polynomial Regression models coming in second and third place respectively. One relevant observation from the results is that the Linear Regression and other simpler models performed the worst on the data out of all the models, demonstrating that the data is likely not linear.
+
+## Model Autoplots
+
+The autoplot of a model provides a visualization of how each of its tuned parameters affect the performance of the model at different levels. In the following autoplots for the tuned models, performance will be measured by the RMSE; a lower RMSE indicates a better-performing model.
+
+### Elastic Net Regression Autoplot
+
+```{r}
+# making an autoplot for the Elastic Net model with RMSE as the metric
+autoplot(en_tuned, metric = 'rmse') + theme_minimal()
+
+# seeing the best Elastic Net model with the lowest RMSE
+best_en_model
+```
+
+For the Elastic Net model, we tuned the `penalty` and `mixture` at ten different levels. From the autoplot, we can see that smaller values of `penalty` and smaller values of `mixture` appeared to produce lower RMSE and thus better performance in general. This is confirmed by the best Elastic Net model with the lowest RMSE, which had a `penalty` of 0.00001 and a `mixture` of 0.
+
+### Polynomial Regression Autoplot
+
+```{r}
+# making an autoplot for the Polynomial Regression model with RMSE as the metric
+autoplot(poly_tuned, metric = 'rmse') + theme_minimal()
+
+# seeing the best Polynomial Regression model with the lowest RMSE
+best_poly_model
+```
+
+For the Polynomial Regression model, we tuned the `degree` of all numeric variables, `year` and `miles`, at ten different levels. From the autoplot, we can see that medium levels of `degree` added to the continuous predictors leads to the best results, although it only seems to get slightly better from lower levels of `degree`. After a `degree` of 4, the model starts to worsen in terms of performance (as the RMSE increases), and just keeps getting worse (as the RMSE keeps increasing) as the `degree` increases. This is confirmed by the best Polynomial Regression model with the lowest RMSE, which had a `degree` of 4. Considering this `degree` of 4, we have further evidence of nonlinearity in the data.
+
+### Random Forest Autoplot
+
+```{r}
+# making an autoplot for the Random Forest model with RMSE as the metric
+autoplot(rf_tuned, metric = 'rmse') + theme_minimal()
+
+# seeing the best Random Forest model with the lowest RMSE
+best_rf_model
+```
+
+For the Random Forest model, we tuned the number of predictors randomly sampled at each split (`mtry`), the number of `trees`, and the minimal node size (`min_n`) at eight different levels. From the plots, we can see that the number of trees does not seem to have too much of an effect on the performance of the model, although a number of `trees` on the higher end appears to perform just slightly better. The minimal node size (`min_n`) additionally does not appear to have a huge effect on the performance, although a number of `min_n` on the lower side seems to have slightly lower RMSE values. The number of predictors (`mtry`) definitely has the greatest effect on the performance. It looks to be that a number of `mtry` on the higher side yields the lowest RMSE, although too high of a value of `mtry` seems to bring the RMSE back up. This is likely because we have reached the level where the Random Forest model becomes a bagging model, which is generally worse than a Random Forest Model. This is all confirmed by the best Random Forest model with the lowest RMSE, which had `mtry` at 5, `trees` at 885, and `min_n` at 5.
+
+### Boosted Tree Autoplot
+
+```{r}
+# making an autoplot for the Boosted Tree model with RMSE as the metric
+autoplot(bt_tuned, metric = 'rmse') + theme_minimal()
+
+# seeing the best Boosted Tree model with the lowest RMSE
+best_bt_model
+```
+
+For the Boosted Tree model, we tuned the number of `trees`, `learning_rate`, and `min_n` at five different levels. Important to note is that some tweaking of the model was done prior to finalizing the ranges for these parameters. The model did significantly worse when `min_n` was a lower number, thus causing 40 to 60 to be chosen as the range. It also seems like a value of `min_n` towards the higher end here leads to slighly lower RMSE and better performance. Furthermore, the model did not do as well when the learning rate was at too high of a level, considering that a higher learning rate causes the model to learn faster and faster, but also trains the model less and less and makes it less generalized. Therefore, the range 0.01 to 0.1 was chosen to see which smaller learning rate value performed the best. Within this range and by looking at the starting points in the plots, it looks like the model does better at a higher learning rate. This means that the model does better when it is learning faster, but still not too fast. Additionally, it appears that having more trees leads to lower RMSE and better performance, but generally, once there are more than about 50 trees, the number of trees does not make much of a change on the performance of the model. The model definitely does worse when there are less than 50 trees though. This is all confirmed by the best Boosted Tree model with the lowest RMSE, which had `trees` at 200, `learning_rate` at 0.1, and `min_n` at 55.
+
+### K-Nearest Neighbors (KNN) Autoplot
+
+```{r}
+# making an autoplot for the KNN model with RMSE as the metric
+autoplot(knn_tuned, metric = 'rmse') + theme_minimal()
+
+# seeing the best KNN model with the lowest RMSE
+best_knn_model
+```
+
+For the KNN model, we tuned the number of nearest `neighbors` at fifteen different levels. From the autoplot, we can see that a higher-ended number of `neighbors` produced the lowest RMSE, although the RMSE starts to increase again after hitting 12 `neighbors`.  This is confirmed by the best KNN model with the lowest RMSE, which had a value of `neighbors` of 12.
+
+# Results of the Absolute Best Model: Random Forest #53
+
+## Performance on the Folds
+
+```{r}
+# viewing the results on our absolute best model, the random forest
+best_rf_model
+```
+
+As previously said, the Random Forest model performed the best out of all other models when comparing cross-validation performances, and the parameter values of the absolute best Random Forest model, Random Forest #53, were an `mtry` of 5, `trees` of 885, and `min_n` of 5. This absolute best Random Forest model yielded an RMSE of 8759.687!
+
+## Fitting Random Forest #53 to the Training Data
+
+Now it's time to take this absolute best model, Random Forest #53, and fit it to the training data. Using this best Random Forest model tells us the optimal values of the parameters: 5 predictors randomly sampled at each split, 885 trees, and a minimal node size of 5. Fitting this model to the entire data set will train this specific Random Forest model one more time before putting it up to the test on the testing data.
+
+```{r}
+# fitting this absolute best model to the entire training data set
+final_rf_model <- finalize_workflow(rf_wkflow, best_rf_model)
+final_rf_model_train <- fit(final_rf_model, cars_train)
+```
+
+## Testing Our Random Forest on the Test Set
+
+Now it's time to apply the specific Random Forest model to the testing set, which contains data it has not trained on or even seen at all yet.
+
+```{r}
+# creating the predicted vs. actual value tibble
+final_rf_model_test <- augment(final_rf_model_train, 
+                               new_data = cars_test)
+final_rf_model_test
+
+# creating a condensed version of the predicted vs. actual value tibble
+final_rf_model_test_condensed <- predict(final_rf_model_train, new_data = cars_test %>% select(-price))
+final_rf_model_test_condensed <- bind_cols(final_rf_model_test_condensed, cars_test %>% select(price))
+final_rf_model_test_condensed
+```
+
+```{r}
+# indicating the desired metric
+cars_metric <- metric_set(rmse)
+
+# collecting the root mean square error of the model on the testing data
+final_rf_model_test_metrics <- cars_metric(final_rf_model_test, truth = price, estimate = .pred)
+final_rf_model_test_metrics
+```
+
+Our random forest ended up performing a little worse than expected with an RMSE of 10725. Since RMSE is measured in relation to the values the outcome may take on, our testing RMSE of 10725 in relation to the outcome range is not an amazing RMSE, but it is not too bad either. Thus, our model did not perform horribly and still managed to explain a decent amount of variation in the outcome!
+
+## The Predicted Values Versus Actual Values Plot
+
+Here is also a plot of the predicted values versus the actual values:
+
+```{r}
+# creating a plot of predicted values vs. actual values
+final_rf_model_test %>%
+  ggplot(aes(x = .pred, y = price)) +
+  geom_point(alpha = 0.4) +
+  geom_abline(lty = 2) +
+  theme_grey() +
+  coord_obs_pred() +
+  labs(title = "Predicted Values vs. Actual Values")
+```
+
+## The Variable Importance Plot
+
+Here is the variable importance plot (VIP) as well, telling us which variables are the most important in predicting the outcome, which is a nice feature that random forests provide.
+
+```{r}
+# using the training fit to create the VIP because the model was not actually fit to the testing data
+final_rf_model_train %>% 
+  extract_fit_engine() %>% 
+  vip(aesthetics = list(fill = "red3", color = "blue3"))
+```
+
+From this we can see that the variables that mattered the most in predicting the outcome was the number of `miles` the car had and the `year` it was manufactured, which was expected. These two variables were by far the most important variables. This also makes contextual sense, as explained in the EDA section.
+
+# Conclusion
+
+After fitting several models and conducting analysis on each of them, the best model to predict the price of a car seems to be the Random Forest model, based on its cross-validation performance. This makes sense though, considering that the Random Forest tends to work well for most data due to it making no assumptions about parametric forms or the outcome, making it more flexible. However, this model still did not do a stellar job predicting the price of a used car, at least based on the RMSE.
+
+The model that seemed to do the worst was the Linear Regression. However, this also makes sense, considering that the outcome variable itself was not distributed fully normally and we had several indications of nonlinearity in the data. That is why its counterpart, Polynomial Regression, did much better performance-wise and finished in the top 3 in terms of model performance.
+
+Some directions of improvement may be to look into other car features associated with the price of a used car that may help explain more of the variability in the outcome than our current model. For example, we could look at more parts of the car itself that indicate better ideas of its condition.
+
+If I were to continue this project and move forward with my analysis, I would like to explore more predictors that could contribute to indicating the price of a used car. Also, another direction for analysis might be other sources of used car data, considering that this one was only from one website. It would be interesting to see if the prices of used cars differ based on the website they are posted on.
+
+Overall, attempting to predict the price of a used car using this data set provided great opportunity for me to enhance my machine learning and data analysis skills. As I got to know the data set more, I found myself becoming more motivated to learn everything about my data and find a model that would work the best. Although the random forest might not have been perfect, I am happy I was able to develop a model that at least explains some of the variation in the price of a used car!
